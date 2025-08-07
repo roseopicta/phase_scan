@@ -10,6 +10,7 @@ Notebooks illustrate its use on several examples of states.
 git clone https://github.com/roseopicta/phase_scan_.git
 cd phase_scan
 pip install -e .
+```
 
 ## Simple example
 
