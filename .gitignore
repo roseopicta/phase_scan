@@ -1,0 +1,13 @@
+.DS_Store
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+pip-log.txt
+venv/
+env/
