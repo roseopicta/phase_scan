@@ -7,7 +7,7 @@ Notebooks illustrate its use on several examples of states.
 ## Setup
 
 ```shell
-git clone https://github.com/roseopicta/phase_scan_.git
+git clone https://github.com/roseopicta/phase_scan.git
 cd phase_scan
 pip install -e .
 ```
