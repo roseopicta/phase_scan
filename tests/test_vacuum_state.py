@@ -23,10 +23,8 @@
 import pytest
 
 from phase_scan import gaussian_utils
-from phase_scan.ml_estimation import (
-    ml_covariance_estimation,
-    ml_covariance_estimation_direct_ls,
-)
+from phase_scan.ml_estimation import ml_covariance_estimation
+from phase_scan.gmm_estimation import gmm_covariance_estimation
 
 from functools import partial
 import numpy as np
@@ -36,7 +34,7 @@ import numpy as np
     "estimation_fn",
     [
         partial(ml_covariance_estimation, lr=0.01, max_iterations=1000),
-        ml_covariance_estimation_direct_ls,
+        gmm_covariance_estimation,
     ],
 )
 def test_vacuum_state(estimation_fn):
