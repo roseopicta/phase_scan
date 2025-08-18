@@ -107,7 +107,7 @@ def total_log_likelihood_batched(
     )
 
 
-def full_covariance_matrix(
+def full_covariance_matrix_cholesky(
     l_sigma_values: jnp.ndarray, num_modes: int
 ) -> jnp.ndarray:
     """
@@ -124,6 +124,25 @@ def full_covariance_matrix(
     indices = jnp.tril_indices(2 * num_modes)
     L = L.at[indices].set(l_sigma_values)
     return L @ L.T
+
+
+def full_covariance_matrix_triu(
+    sigma_values: jnp.ndarray, num_modes: int
+) -> jnp.ndarray:
+    """
+    Reconstructs the full symmetric covariance matrix from its upper diagonal elements.
+
+    Args:
+        sigma_values (jnp.ndarray): Upper diagonal elements.
+        num_modes (int): Number of modes. The full matrix is of shape (2*num_modes, 2*num_modes).
+
+    Returns:
+        jnp.ndarray: Symmetric covariance matrix of shape (2*num_modes, 2*num_modes).
+    """
+    indices = jnp.triu_indices(num_modes * 2)
+    sigma = jnp.zeros((num_modes * 2, num_modes * 2))
+    sigma = sigma.at[indices].set(sigma_values)
+    return sigma + sigma.T
 
 
 def ml_covariance_estimation(
@@ -147,10 +166,12 @@ def ml_covariance_estimation(
     """
     num_modes = len(scanning_data[0][0])
 
+    full_covariance_matrix_fn = full_covariance_matrix_triu
+
     @jax.jit
     def loss_fn(sigma_l_values):
         return -total_log_likelihood_batched(
-            full_covariance_matrix(sigma_l_values, num_modes), scanning_data
+            full_covariance_matrix_fn(sigma_l_values, num_modes), scanning_data
         )
 
     @jax.jit
@@ -170,43 +191,4 @@ def ml_covariance_estimation(
         params, opt_state, loss_value = update_step(params, opt_state)
         if it % 10 == 0:
             progress.set_postfix(log_likelihood=-loss_value)
-    return full_covariance_matrix(params, num_modes)
-
-
-def ml_covariance_estimation_direct_ls(
-    scanning_data: List[Tuple[np.ndarray, np.ndarray]],
-) -> np.ndarray:
-    """
-    Performs maximum likelihood estimation (MLE) of a Gaussian state's covariance matrix
-    using homodyne scanning data.
-
-    This function uses least square estimation and is suitable for smaller batches
-    of data.
-
-    Args:
-        scanning_data: a list of tuples (angles, quadrature_data)
-            - angles: np.ndarray of shape (num_modes), specifying the measurement angles
-            - quadratures: np.ndarray of shape (batch_size, num_modes), the quadrature data
-
-    Returns:
-        np.ndarray: Estimated covariance matrix of shape (2 * num_modes, 2 * num_modes).
-    """
-    num_modes = len(scanning_data[0][0])
-    angles_array = jnp.stack([item[0] for item in scanning_data])
-    quadratures_array = jnp.stack([item[1] for item in scanning_data])
-
-    @jax.jit
-    def process_batch(theta, samples):
-        V_k = quadrature_projection_matrix(theta)
-        S_k = samples.T @ samples
-        A_k = jnp.kron(V_k, V_k) * samples.shape[0]
-        b_k = S_k.flatten()
-        return A_k, b_k
-
-    process_batch = jax.vmap(process_batch, in_axes=(0, 0))
-    A_blocks, b_vecs = process_batch(angles_array, quadratures_array)
-
-    A = A_blocks.reshape(-1, A_blocks.shape[-1])
-    b = b_vecs.flatten()
-    sigma_vec, *_ = jnp.linalg.lstsq(A, b)
-    return sigma_vec.reshape(2 * num_modes, 2 * num_modes)
+    return full_covariance_matrix_fn(params, num_modes)
