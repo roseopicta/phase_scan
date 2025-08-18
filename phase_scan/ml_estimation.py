@@ -25,7 +25,7 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 from tqdm.auto import tqdm
-from typing import Sequence, Tuple
+from typing import List, Sequence, Tuple
 
 
 def quadrature_projection_matrix(angles: jnp.ndarray) -> jnp.ndarray:
@@ -128,7 +128,7 @@ def full_covariance_matrix(
 
 
 def ml_covariance_estimation(
-    scanning_data: Tuple[np.ndarray, np.ndarray],
+    scanning_data: List[Tuple[np.ndarray, np.ndarray]],
     lr: float = 0.05,
     max_iterations: int = 5_000,
 ) -> np.ndarray:
@@ -137,9 +137,9 @@ def ml_covariance_estimation(
     using homodyne scanning data.
 
     Args:
-        scanning_data (Tuple[np.ndarray, np.ndarray]): A tuple containing:
-            - angles: np.ndarray of shape (batch_size, 2 * num_modes), specifying the measurement angles
-            - quadratures: np.ndarray of shape (batch_size, num_samples, num_modes), the measured data
+        scanning_data: a list of tuples (angles, quadrature_data)
+            - angles: np.ndarray of shape (num_modes), specifying the measurement angles
+            - quadratures: np.ndarray of shape (batch_size, num_modes), the quadrature data
         lr (float, optional): Learning rate for the optimizer. Defaults to 0.05.
         max_iterations (int, optional): Maximum number of optimization steps. Defaults to 5000.
 
@@ -172,3 +172,42 @@ def ml_covariance_estimation(
         if it % 10 == 0:
             progress.set_postfix(log_likelihood=-loss_value)
     return full_covariance_matrix(params, num_modes)
+
+
+def ml_covariance_estimation_direct_ls(
+    scanning_data: List[Tuple[np.ndarray, np.ndarray]],
+) -> np.ndarray:
+    """
+    Performs maximum likelihood estimation (MLE) of a Gaussian state's covariance matrix
+    using homodyne scanning data.
+
+    This function uses least square estimation and is suitable for smaller batches
+    of data.
+
+    Args:
+        scanning_data: a list of tuples (angles, quadrature_data)
+            - angles: np.ndarray of shape (num_modes), specifying the measurement angles
+            - quadratures: np.ndarray of shape (batch_size, num_modes), the quadrature data
+
+    Returns:
+        np.ndarray: Estimated covariance matrix of shape (2 * num_modes, 2 * num_modes).
+    """
+    num_modes = len(scanning_data[0][0])
+    angles_array = jnp.stack([item[0] for item in scanning_data])
+    quadratures_array = jnp.stack([item[1] for item in scanning_data])
+
+    @jax.jit
+    def process_batch(theta, samples):
+        V_k = quadrature_projection_matrix(theta)
+        S_k = samples.T @ samples
+        A_k = jnp.kron(V_k, V_k) * samples.shape[0]
+        b_k = S_k.flatten()
+        return A_k, b_k
+
+    process_batch = jax.vmap(process_batch, in_axes=(0, 0))
+    A_blocks, b_vecs = process_batch(angles_array, quadratures_array)
+
+    A = A_blocks.reshape(-1, A_blocks.shape[-1])
+    b = b_vecs.flatten()
+    sigma_vec, *_ = jnp.linalg.lstsq(A, b)
+    return sigma_vec.reshape(2 * num_modes, 2 * num_modes)

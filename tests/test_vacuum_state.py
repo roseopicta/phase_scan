@@ -23,17 +23,28 @@
 import pytest
 
 from phase_scan import gaussian_utils
-from phase_scan.ml_estimation import ml_covariance_estimation
+from phase_scan.ml_estimation import (
+    ml_covariance_estimation,
+    ml_covariance_estimation_direct_ls,
+)
 
+from functools import partial
 import numpy as np
 
 
-def test_vacuum_state():
+@pytest.mark.parametrize(
+    "estimation_fn",
+    [
+        partial(ml_covariance_estimation, lr=0.01, max_iterations=1000),
+        ml_covariance_estimation_direct_ls,
+    ],
+)
+def test_vacuum_state(estimation_fn):
     np.random.seed(0)
     sigma = gaussian_utils.vacuum()
     x_xp_p = np.array([0, np.pi / 4, np.pi / 2])
     samples = gaussian_utils.generate_scanned_samples(
         sigma, x_xp_p, gaussian_utils.generate_samples_parallel, 50_000
     )
-    sigma_hat = ml_covariance_estimation(samples, lr=0.01, max_iterations=1000)
+    sigma_hat = estimation_fn(samples)
     np.testing.assert_allclose(sigma, sigma_hat, atol=1e-2, rtol=1e-2)

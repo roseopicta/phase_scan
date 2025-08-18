@@ -23,12 +23,23 @@
 import pytest
 
 from phase_scan import gaussian_utils
-from phase_scan.ml_estimation import ml_covariance_estimation
+from phase_scan.ml_estimation import (
+    ml_covariance_estimation,
+    ml_covariance_estimation_direct_ls,
+)
 
+from functools import partial
 import numpy as np
 
 
-def test_squeezed_state():
+@pytest.mark.parametrize(
+    "estimation_fn",
+    [
+        partial(ml_covariance_estimation, lr=0.05, max_iterations=5000),
+        ml_covariance_estimation_direct_ls,
+    ],
+)
+def test_squeezed_state(estimation_fn):
     squeezing_dB = 6
     squeezing_angle = np.pi / 4
     squeezing_s = 10 ** (-squeezing_dB / 10)
@@ -42,5 +53,5 @@ def test_squeezed_state():
     samples = gaussian_utils.generate_scanned_samples(
         sigma, angles, gaussian_utils.generate_samples_parallel, 1000
     )
-    sigma_hat = ml_covariance_estimation(samples, lr=0.05, max_iterations=1000)
+    sigma_hat = estimation_fn(samples)
     np.testing.assert_allclose(sigma, sigma_hat, atol=1e-2, rtol=1e-2)
