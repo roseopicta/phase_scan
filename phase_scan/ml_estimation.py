@@ -108,23 +108,22 @@ def total_log_likelihood_batched(
 
 
 def full_covariance_matrix(
-    sigma_values: jnp.ndarray, num_modes: int
+    l_sigma_values: jnp.ndarray, num_modes: int
 ) -> jnp.ndarray:
     """
-    Reconstructs the full symmetric covariance matrix from its upper-triangular values.
+    Reconstructs the full symmetric covariance matrix from its Cholesky factor.
 
     Args:
-        sigma_values (jnp.ndarray): Flattened upper-triangular elements of the covariance matrix.
+        l_sigma_values (jnp.ndarray): Flattened cholesky factor.
         num_modes (int): Number of modes. The full matrix is of shape (2*num_modes, 2*num_modes).
 
     Returns:
         jnp.ndarray: Symmetric covariance matrix of shape (2*num_modes, 2*num_modes).
     """
-    indices = jnp.triu_indices(num_modes * 2)
-    sigma = jnp.zeros((num_modes * 2, num_modes * 2))
-    sigma = sigma.at[indices].set(sigma_values)
-    sigma = sigma + jnp.triu(sigma, k=1).T  # Make it symmetric
-    return sigma
+    L = jnp.zeros((2 * num_modes, 2 * num_modes))
+    indices = jnp.tril_indices(2 * num_modes)
+    L = L.at[indices].set(l_sigma_values)
+    return L @ L.T
 
 
 def ml_covariance_estimation(
@@ -149,9 +148,9 @@ def ml_covariance_estimation(
     num_modes = len(scanning_data[0][0])
 
     @jax.jit
-    def loss_fn(sigma_values):
+    def loss_fn(sigma_l_values):
         return -total_log_likelihood_batched(
-            full_covariance_matrix(sigma_values, num_modes), scanning_data
+            full_covariance_matrix(sigma_l_values, num_modes), scanning_data
         )
 
     @jax.jit
@@ -162,8 +161,8 @@ def ml_covariance_estimation(
         params = optax.apply_updates(params, updates)
         return params, opt_state, loss
 
-    sigma_0 = jnp.eye(num_modes * 2)
-    params = sigma_0[jnp.triu_indices(num_modes * 2)]
+    sigma_l_0 = jnp.eye(num_modes * 2)
+    params = sigma_l_0[jnp.triu_indices(num_modes * 2)]
     optimizer = optax.adam(learning_rate=lr)
     opt_state = optimizer.init(params)
     progress = tqdm(range(max_iterations), desc="Optimizing...", leave=True)
